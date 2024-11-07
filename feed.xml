@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+    <rss version="2.0">
+        <channel>
+            <title>Live Log File Updates</title>
+            <link>http://your_github_pages_link</link>
+            <description>Real-time updates from the log file</description>
+            
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623339</title>
+            <description>C0481F1100C</description>
+            <pubDate>2024-11-07T18:08:39.623339</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623352</title>
+            <description>C50481</description>
+            <pubDate>2024-11-07T18:08:39.623352</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623354</title>
+            <description>4C62B1F1700C</description>
+            <pubDate>2024-11-07T18:08:39.623354</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623356</title>
+            <description>C562B7</description>
+            <pubDate>2024-11-07T18:08:39.623356</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623358</title>
+            <description>8131F1400C</description>
+            <pubDate>2024-11-07T18:08:39.623358</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623360</title>
+            <description>C58134</description>
+            <pubDate>2024-11-07T18:08:39.623360</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623362</title>
+            <description>C2711F1200C</description>
+            <pubDate>2024-11-07T18:08:39.623362</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623363</title>
+            <description>C52712</description>
+            <pubDate>2024-11-07T18:08:39.623363</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623365</title>
+            <description>C2711F1200C</description>
+            <pubDate>2024-11-07T18:08:39.623365</pubDate>
+        </item>
+        <item>
+            <title>Log Entry at 2024-11-07T18:08:39.623366</title>
+            <description>C52712</description>
+            <pubDate>2024-11-07T18:08:39.623366</pubDate>
+        </item>
+        </channel>
+    </rss>

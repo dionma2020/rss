@@ -9,9 +9,9 @@ def run_with_pty():
     else:  # Parent process
         while True:
             output = os.read(fd, 1024).decode()
-            if "Username" in output:
+            if "Username for 'https://github.com'" in output:
                 os.write(fd, b"dionma2020@gmail.com\n")
-            elif "Password" in output:
+            elif "Password for 'https://dionma2020@gmail.com@github.com" in output:
                 os.write(fd, b"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\n")
             print(output)
 

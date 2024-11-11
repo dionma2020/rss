@@ -1,14 +1,1 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-    <rss version="2.0">
-        <channel>
-            <title>Live Log File Updates</title>
-            <link>http://your_github_pages_link</link>
-            <description>Real-time updates from the log file</description>
-            
-        <item>
-            <title>Log Entry at 2024-11-08T21:19:59.377327</title>
-            <description>C5D994</description>
-            <pubDate>2024-11-08T21:19:59.377327</pubDate>
-        </item>
-        </channel>
-    </rss>
+test test

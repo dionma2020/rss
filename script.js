@@ -38,5 +38,5 @@ async function processRSSFeed() {
 // Decode and display functions remain the same...
 
 // Periodically fetch updates
-setInterval(processRSSFeed, 10000); // Check for updates every 10 seconds
+setInterval(processRSSFeed, 5000); // Check for updates every 10 seconds
 processRSSFeed(); // Initial fetch

@@ -16,18 +16,26 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        console.log("Fetched RSS Feed:", rssText);
-        console.log("All Calls Data:", allCallsData);
-        console.log("Fire Truck Data:", fireTruckData);
+        logDebug("Fetched RSS Feed:\n" + rssText);
+        logDebug("All Calls Data:\n" + allCallsData);
+        logDebug("Fire Truck Data:\n" + fireTruckData);
 
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
-        console.log("Decoded Data:", decodedData);
+        logDebug("Decoded Data:\n" + JSON.stringify(decodedData, null, 2));
 
         displayData(decodedData);
     } catch (error) {
-        console.error("Error processing RSS feed:", error);
+        logDebug("Error processing RSS feed:\n" + error.message);
     }
 }
+function logDebug(message) {
+    const debugLogs = document.getElementById("debugLogs");
+    if (typeof message === "object") {
+        message = JSON.stringify(message, null, 2); // Pretty-print objects
+    }
+    debugLogs.textContent += message + "\n";
+}
+
 
 // Decode and display functions remain the same...
 

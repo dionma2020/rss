@@ -16,19 +16,13 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(rssText, "text/xml");
+        console.log("Fetched RSS Feed:", rssText);
+        console.log("All Calls Data:", allCallsData);
+        console.log("Fire Truck Data:", fireTruckData);
 
-        // Check if the feed has been updated
-        const updatedTime = xmlDoc.querySelector("updated")?.textContent;
-        if (lastUpdated === updatedTime) {
-            console.log("No new updates.");
-            return;
-        }
-        lastUpdated = updatedTime;
-
-        // Decode and display data
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
+        console.log("Decoded Data:", decodedData);
+
         displayData(decodedData);
     } catch (error) {
         console.error("Error processing RSS feed:", error);

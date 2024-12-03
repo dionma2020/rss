@@ -35,7 +35,19 @@ function logDebug(message) {
     }
     debugLogs.textContent += message + "\n";
 }
+function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
+    const items = [];
 
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(rssText, "text/xml");
+
+    const allCallsLines = allCallsData.split("\n");
+    const fireTruckLines = fireTruckData.split("\n");
+
+    const entries = xmlDoc.querySelectorAll("entry");
+    entries.forEach((entry) => {
+        const title = entry.querySelector("title")?.textContent || "Unknown";
+        const
 
 // Decode and display functions remain the same...
 

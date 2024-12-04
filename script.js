@@ -2,10 +2,6 @@ const rssFeedUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/feed.x
 const allCallsFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/allcalls.dat";
 const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/FireTruckStatus.dat";
 
-// Periodically fetch updates
-setInterval(processRSSFeed, 5000); // Check for updates every 5 seconds
-processRSSFeed(); // Initial fetch
-
 async function processRSSFeed() {
     try {
         const [rssResponse, allCallsResponse, fireTruckResponse] = await Promise.all([
@@ -18,25 +14,48 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        logDebug("Fetched RSS Feed:\n" + rssText);
-        logDebug("All Calls Data:\n" + allCallsData);
-        logDebug("Fire Truck Data:\n" + fireTruckData);
-
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
-        logDebug("Decoded Data:\n" + JSON.stringify(decodedData, null, 2));
 
         displayData(decodedData);
     } catch (error) {
-        logDebug("Error processing RSS feed:\n" + error.message);
+        console.error("Error processing RSS feed:", error);
     }
 }
 
-function logDebug(message) {
-    const debugLogs = document.getElementById("debugLogs");
-    if (typeof message === "object") {
-        message = JSON.stringify(message, null, 2); // Pretty-print objects
+function decodeCallInfo(selcall, allCallsLines) {
+    selcall = selcall.trim(); // Normalize selcall
+    console.log(`Looking for selcall: "${selcall}" in allCalls.dat`);
+
+    for (const line of allCallsLines) {
+        const [fileSelcall, callInfo] = line.split(",");
+        if (!fileSelcall) continue;
+
+        if (fileSelcall.trim() === selcall) {
+            console.log(`Match found for selcall "${selcall}" in allCalls.dat: "${callInfo.trim()}"`);
+            return callInfo.trim() || "Unknown call info";
+        }
     }
-    debugLogs.textContent += message + "\n";
+
+    console.log(`No match found for selcall "${selcall}" in allCalls.dat`);
+    return "No match found in allCalls.dat";
+}
+
+function decodeFireTruckStatus(selcall, fireTruckLines) {
+    selcall = selcall.trim(); // Normalize selcall
+    console.log(`Looking for selcall: "${selcall}" in FireTruckStatus.dat`);
+
+    for (const line of fireTruckLines) {
+        const [fileSelcall, truckStatus] = line.split(",");
+        if (!fileSelcall) continue;
+
+        if (fileSelcall.trim() === selcall) {
+            console.log(`Match found for selcall "${selcall}" in FireTruckStatus.dat: "${truckStatus.trim()}"`);
+            return truckStatus.trim() || "Unknown truck status";
+        }
+    }
+
+    console.log(`No match found for selcall "${selcall}" in FireTruckStatus.dat`);
+    return "No match found in FireTruckStatus.dat";
 }
 
 function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
@@ -44,18 +63,20 @@ function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
     const allCallsLines = allCallsData.split("\n");
     const fireTruckLines = fireTruckData.split("\n");
 
-    // Extract raw data lines from the channel content
     const rawLines = rssText.match(/<channel>([\s\S]*?)<\/channel>/)?.[1].trim().split("\n") || [];
+    console.log("Raw RSS Lines:", rawLines);
 
     rawLines.forEach((line) => {
         const [selcall, timestamp] = line.split(",");
         if (selcall && timestamp) {
+            console.log(`Processing selcall: "${selcall}" with timestamp: "${timestamp}"`);
+
             const callInfo = decodeCallInfo(selcall, allCallsLines);
             const fireTruckStatus = decodeFireTruckStatus(selcall, fireTruckLines);
 
             items.push({
-                selcall: selcall,
-                timestamp: timestamp,
+                selcall: selcall.trim(),
+                timestamp: timestamp.trim(),
                 callInfo: callInfo,
                 fireTruckStatus: fireTruckStatus,
             });
@@ -65,31 +86,22 @@ function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
     return items;
 }
 
-function decodeCallInfo(selcall, allCallsLines) {
-    for (const line of allCallsLines) {
-        if (line.startsWith(selcall)) {
-            return line.split(",")[1]?.trim() || "Unknown call info";
-        }
-    }
-    return "No match found in allCalls.dat";
-}
-
-function decodeFireTruckStatus(selcall, fireTruckLines) {
-    for (const line of fireTruckLines) {
-        if (line.startsWith(selcall)) {
-            return line.split(",")[1]?.trim() || "Unknown truck status";
-        }
-    }
-    return "No match found in FireTruckStatus.dat";
-}
-
 function displayData(decodedData) {
-    const dataContainer = document.getElementById("dataContainer");
-    dataContainer.innerHTML = ""; // Clear previous data
+    const output = document.getElementById("output");
+    output.innerHTML = ""; // Clear previous data
 
-    decodedData.forEach((item) => {
-        const div = document.createElement("div");
-        div.textContent = `Selcall: ${item.selcall}, Timestamp: ${item.timestamp}, Call Info: ${item.callInfo}, Fire Truck Status: ${item.fireTruckStatus}`;
-        dataContainer.appendChild(div);
+    decodedData.forEach(({ selcall, timestamp, callInfo, fireTruckStatus }) => {
+        const entry = document.createElement("div");
+        entry.innerHTML = `
+            <p><strong>Selcall:</strong> ${selcall}</p>
+            <p><strong>Timestamp:</strong> ${timestamp}</p>
+            <p><strong>Call Info:</strong> ${callInfo}</p>
+            <p><strong>Fire Truck Status:</strong> ${fireTruckStatus}</p>
+            <hr>
+        `;
+        output.appendChild(entry);
     });
 }
+
+setInterval(processRSSFeed, 5000); // Refresh every 5 seconds
+processRSSFeed(); // Initial load

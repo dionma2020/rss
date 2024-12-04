@@ -2,7 +2,9 @@ const rssFeedUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/feed.x
 const allCallsFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/allcalls.dat";
 const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/FireTruckStatus.dat";
 
-let lastUpdated = null; // Track the last update time
+// Periodically fetch updates
+setInterval(processRSSFeed, 5000); // Check for updates every 5 seconds
+processRSSFeed(); // Initial fetch
 
 async function processRSSFeed() {
     try {
@@ -16,9 +18,9 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        logDebug("Fetched RSS Feed:\n" );
-        logDebug("All Calls Data:\n" );
-        logDebug("Fire Truck Data:\n" );
+        logDebug("Fetched RSS Feed:\n" + rssText);
+        logDebug("All Calls Data:\n" + allCallsData);
+        logDebug("Fire Truck Data:\n" + fireTruckData);
 
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
         logDebug("Decoded Data:\n" + JSON.stringify(decodedData, null, 2));
@@ -39,79 +41,55 @@ function logDebug(message) {
 
 function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
     const items = [];
-
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(rssText, "text/xml");
-
     const allCallsLines = allCallsData.split("\n");
     const fireTruckLines = fireTruckData.split("\n");
 
-    const entries = xmlDoc.querySelectorAll("entry");
-    entries.forEach((entry) => {
-        const title = entry.querySelector("title")?.textContent || "Unknown";
-        const description = entry.querySelector("description")?.textContent || "Unknown";
+    // Extract raw data lines from the channel content
+    const rawLines = rssText.match(/<channel>([\s\S]*?)<\/channel>/)?.[1].trim().split("\n") || [];
 
-        const callInfo = decodeCallInfo(description, allCallsLines);
-        const fireTruckStatus = decodeFireTruckStatus(description, fireTruckLines);
+    rawLines.forEach((line) => {
+        const [selcall, timestamp] = line.split(",");
+        if (selcall && timestamp) {
+            const callInfo = decodeCallInfo(selcall, allCallsLines);
+            const fireTruckStatus = decodeFireTruckStatus(selcall, fireTruckLines);
 
-        items.push({ title, callInfo, fireTruckStatus });
+            items.push({
+                selcall: selcall,
+                timestamp: timestamp,
+                callInfo: callInfo,
+                fireTruckStatus: fireTruckStatus,
+            });
+        }
     });
 
     return items;
 }
 
-function decodeCallInfo(line, allCallsLines) {
-    const startIndex = line.indexOf("C");
-    if (startIndex !== -1) {
-        const endIndex = line.indexOf("F", startIndex);
-        if (endIndex !== -1) {
-            const callNumber = line.substring(startIndex, endIndex + 1);
-            for (const callLine of allCallsLines) {
-                if (callLine.includes(callNumber)) {
-                    return callLine.split(",")[1].trim();
-                }
-            }
+function decodeCallInfo(selcall, allCallsLines) {
+    for (const line of allCallsLines) {
+        if (line.startsWith(selcall)) {
+            return line.split(",")[1]?.trim() || "Unknown call info";
         }
     }
-    return "Unknown Call Info";
+    return "No match found in allCalls.dat";
 }
 
-function decodeFireTruckStatus(line, fireTruckLines) {
-    const startIndex = line.indexOf("F");
-    if (startIndex !== -1) {
-        const endIndex = line.indexOf("C", startIndex);
-        if (endIndex !== -1) {
-            const truckNumber = line.substring(startIndex + 1, endIndex + 1);
-            for (const truckLine of fireTruckLines) {
-                if (truckLine.includes(truckNumber)) {
-                    return truckLine.split(",")[1].trim();
-                }
-            }
+function decodeFireTruckStatus(selcall, fireTruckLines) {
+    for (const line of fireTruckLines) {
+        if (line.startsWith(selcall)) {
+            return line.split(",")[1]?.trim() || "Unknown truck status";
         }
     }
-    return "Unknown Truck Status";
+    return "No match found in FireTruckStatus.dat";
 }
 
-function displayData(data) {
-    const outputDiv = document.getElementById("output");
-    if (!data || data.length === 0) {
-        outputDiv.innerHTML = "<p>No data to display</p>";
-        return;
-    }
+function displayData(decodedData) {
+    const dataContainer = document.getElementById("dataContainer");
+    dataContainer.innerHTML = ""; // Clear previous data
 
-    outputDiv.innerHTML = data
-        .map(
-            (item) => `
-            <div>
-                <h3>${item.title}</h3>
-                <p><strong>Call Info:</strong> ${item.callInfo}</p>
-                <p><strong>Firetruck Status:</strong> ${item.fireTruckStatus}</p>
-            </div>
-        `
-        )
-        .join("<hr>");
+    decodedData.forEach((item) => {
+        const div = document.createElement("div");
+        div.textContent = `Selcall: ${item.selcall}, Timestamp: ${item.timestamp}, Call Info: ${item.callInfo}, Fire Truck Status: ${item.fireTruckStatus}`;
+        dataContainer.appendChild(div);
+    });
 }
-
-// Periodically fetch updates
-setInterval(processRSSFeed, 10000); // Check for updates every 10 seconds
-processRSSFeed(); // Initial fetch

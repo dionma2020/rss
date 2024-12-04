@@ -60,25 +60,41 @@ function decodeFireTruckStatus(selcall, fireTruckLines) {
 
 function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
     const items = [];
-    const allCallsLines = allCallsData.split("\n");
-    const fireTruckLines = fireTruckData.split("\n");
+    const allCallsMap = new Map();
+    const fireTruckMap = new Map();
 
-    const rawLines = rssText.match(/<channel>([\s\S]*?)<\/channel>/)?.[1].trim().split("\n") || [];
-    console.log("Raw RSS Lines:", rawLines);
+    // Parse `allcalls.dat` into a Map
+    allCallsData.split("\n").forEach((line) => {
+        const [code, description] = line.split(",");
+        if (code && description) {
+            allCallsMap.set(code.trim(), description.trim());
+        }
+    });
 
-    rawLines.forEach((line) => {
-        const [selcall, timestamp] = line.split(",");
-        if (selcall && timestamp) {
-            console.log(`Processing selcall: "${selcall}" with timestamp: "${timestamp}"`);
+    // Parse `firetruckstatus.dat` into a Map
+    fireTruckData.split("\n").forEach((line) => {
+        const [code, description] = line.split(",");
+        if (code && description) {
+            fireTruckMap.set(code.trim(), description.trim());
+        }
+    });
 
-            const callInfo = decodeCallInfo(selcall, allCallsLines);
-            const fireTruckStatus = decodeFireTruckStatus(selcall, fireTruckLines);
+    // Parse RSS feed
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(rssText, "text/xml");
+    const rawEntries = xmlDoc.documentElement.textContent.trim().split("\n");
+
+    rawEntries.forEach((entry) => {
+        const [code, timestamp] = entry.split(",");
+        if (code && timestamp) {
+            const callDesc = allCallsMap.get(code.trim()) || "Unknown Call";
+            const truckStatus = fireTruckMap.get(code.trim()) || "Unknown Status";
 
             items.push({
-                selcall: selcall.trim(),
+                code: code.trim(),
                 timestamp: timestamp.trim(),
-                callInfo: callInfo,
-                fireTruckStatus: fireTruckStatus,
+                callDescription: callDesc,
+                truckStatus: truckStatus
             });
         }
     });
@@ -88,18 +104,18 @@ function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
 
 function displayData(decodedData) {
     const output = document.getElementById("output");
-    output.innerHTML = ""; // Clear previous data
+    output.innerHTML = ""; // Clear existing content
 
-    decodedData.forEach(({ selcall, timestamp, callInfo, fireTruckStatus }) => {
-        const entry = document.createElement("div");
-        entry.innerHTML = `
-            <p><strong>Selcall:</strong> ${selcall}</p>
-            <p><strong>Timestamp:</strong> ${timestamp}</p>
-            <p><strong>Call Info:</strong> ${callInfo}</p>
-            <p><strong>Fire Truck Status:</strong> ${fireTruckStatus}</p>
+    decodedData.forEach((item) => {
+        const div = document.createElement("div");
+        div.innerHTML = `
+            <strong>Code:</strong> ${item.code}<br>
+            <strong>Timestamp:</strong> ${item.timestamp}<br>
+            <strong>Call Description:</strong> ${item.callDescription}<br>
+            <strong>Truck Status:</strong> ${item.truckStatus}<br>
             <hr>
         `;
-        output.appendChild(entry);
+        output.appendChild(div);
     });
 }
 

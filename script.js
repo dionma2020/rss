@@ -2,7 +2,8 @@ const rssFeedUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/feed.x
 const allCallsFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/allcalls.dat";
 const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/FireTruckStatus.dat";
 
-// Fetch and process the RSS feed
+let lastUpdated = null; // Track the last update time
+
 async function processRSSFeed() {
     try {
         const [rssResponse, allCallsResponse, fireTruckResponse] = await Promise.all([
@@ -15,47 +16,59 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        // Decode the data
-        const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
+        logDebug("Fetched RSS Feed:\n" + rssText);
+        logDebug("All Calls Data:\n" + allCallsData);
+        logDebug("Fire Truck Data:\n" + fireTruckData);
 
-        // Display the decoded data
+        const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
+        logDebug("Decoded Data:\n" + JSON.stringify(decodedData, null, 2));
+
         displayData(decodedData);
     } catch (error) {
-        console.error("Error processing RSS feed:", error);
+        logDebug("Error processing RSS feed:\n" + error.message);
     }
 }
 
-// Decode RSS feed entries
+function logDebug(message) {
+    const debugLogs = document.getElementById("debugLogs");
+    if (typeof message === "object") {
+        message = JSON.stringify(message, null, 2); // Pretty-print objects
+    }
+    debugLogs.textContent += message + "\n";
+}
+
 function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
+    const items = [];
+
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(rssText, "text/xml");
-    const entries = xmlDoc.querySelectorAll("entry");
 
     const allCallsLines = allCallsData.split("\n");
     const fireTruckLines = fireTruckData.split("\n");
 
-    const decodedEntries = Array.from(entries).map((entry) => {
-        const content = entry.querySelector("content").textContent;
+    const entries = xmlDoc.querySelectorAll("entry");
+    entries.forEach((entry) => {
+        const title = entry.querySelector("title")?.textContent || "Unknown";
+        const description = entry.querySelector("description")?.textContent || "Unknown";
 
-        const callInfo = decodeCallInfo(content, allCallsLines);
-        const fireTruckStatus = decodeFireTruckStatus(content, fireTruckLines);
+        const callInfo = decodeCallInfo(description, allCallsLines);
+        const fireTruckStatus = decodeFireTruckStatus(description, fireTruckLines);
 
-        return { title: entry.querySelector("title").textContent, callInfo, fireTruckStatus };
+        items.push({ title, callInfo, fireTruckStatus });
     });
 
-    return decodedEntries;
+    return items;
 }
 
-// Decode call information
 function decodeCallInfo(line, allCallsLines) {
     const startIndex = line.indexOf("C");
     if (startIndex !== -1) {
         const endIndex = line.indexOf("F", startIndex);
         if (endIndex !== -1) {
-            const callNumber = line.slice(startIndex, endIndex + 1);
+            const callNumber = line.substring(startIndex, endIndex + 1);
             for (const callLine of allCallsLines) {
                 if (callLine.includes(callNumber)) {
-                    return callLine.split(",")[1]?.trim();
+                    return callLine.split(",")[1].trim();
                 }
             }
         }
@@ -63,26 +76,29 @@ function decodeCallInfo(line, allCallsLines) {
     return "Unknown Call Info";
 }
 
-// Decode firetruck status
 function decodeFireTruckStatus(line, fireTruckLines) {
     const startIndex = line.indexOf("F");
     if (startIndex !== -1) {
         const endIndex = line.indexOf("C", startIndex);
         if (endIndex !== -1) {
-            const truckNumber = line.slice(startIndex + 1, endIndex + 1);
+            const truckNumber = line.substring(startIndex + 1, endIndex + 1);
             for (const truckLine of fireTruckLines) {
                 if (truckLine.includes(truckNumber)) {
-                    return truckLine.split(",")[1]?.trim();
+                    return truckLine.split(",")[1].trim();
                 }
             }
         }
     }
-    return "Unknown Firetruck Status";
+    return "Unknown Truck Status";
 }
 
-// Display decoded data
 function displayData(data) {
     const outputDiv = document.getElementById("output");
+    if (!data || data.length === 0) {
+        outputDiv.innerHTML = "<p>No data to display</p>";
+        return;
+    }
+
     outputDiv.innerHTML = data
         .map(
             (item) => `
@@ -96,5 +112,6 @@ function displayData(data) {
         .join("<hr>");
 }
 
-// Initialize the app
-processRSSFeed();
+// Periodically fetch updates
+setInterval(processRSSFeed, 10000); // Check for updates every 10 seconds
+processRSSFeed(); // Initial fetch

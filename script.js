@@ -16,9 +16,9 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        logDebug("Fetched RSS Feed:\n" + rssText);
-        logDebug("All Calls Data:\n" + allCallsData);
-        logDebug("Fire Truck Data:\n" + fireTruckData);
+        logDebug("Fetched RSS Feed:\n" );
+        logDebug("All Calls Data:\n" );
+        logDebug("Fire Truck Data:\n" );
 
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
         logDebug("Decoded Data:\n" + JSON.stringify(decodedData, null, 2));

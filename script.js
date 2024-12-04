@@ -4,6 +4,7 @@ const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/
 
 async function processRSSFeed() {
     try {
+        // Fetch RSS feed and data files
         const [rssResponse, allCallsResponse, fireTruckResponse] = await Promise.all([
             fetch(rssFeedUrl),
             fetch(allCallsFileUrl),
@@ -14,7 +15,12 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
+        console.log("Fetched RSS Feed:", rssText);
+        console.log("All Calls Data:", allCallsData);
+        console.log("Fire Truck Data:", fireTruckData);
+
         const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
+        console.log("Decoded Data:", decodedData);
 
         displayData(decodedData);
     } catch (error) {
@@ -22,102 +28,69 @@ async function processRSSFeed() {
     }
 }
 
-function decodeCallInfo(selcall, allCallsLines) {
-    selcall = selcall.trim(); // Normalize selcall
-    console.log(`Looking for selcall: "${selcall}" in allCalls.dat`);
-
-    for (const line of allCallsLines) {
-        const [fileSelcall, callInfo] = line.split(",");
-        if (!fileSelcall) continue;
-
-        if (fileSelcall.trim() === selcall) {
-            console.log(`Match found for selcall "${selcall}" in allCalls.dat: "${callInfo.trim()}"`);
-            return callInfo.trim() || "Unknown call info";
-        }
-    }
-
-    console.log(`No match found for selcall "${selcall}" in allCalls.dat`);
-    return "No match found in allCalls.dat";
-}
-
-function decodeFireTruckStatus(selcall, fireTruckLines) {
-    selcall = selcall.trim(); // Normalize selcall
-    console.log(`Looking for selcall: "${selcall}" in FireTruckStatus.dat`);
-
-    for (const line of fireTruckLines) {
-        const [fileSelcall, truckStatus] = line.split(",");
-        if (!fileSelcall) continue;
-
-        if (fileSelcall.trim() === selcall) {
-            console.log(`Match found for selcall "${selcall}" in FireTruckStatus.dat: "${truckStatus.trim()}"`);
-            return truckStatus.trim() || "Unknown truck status";
-        }
-    }
-
-    console.log(`No match found for selcall "${selcall}" in FireTruckStatus.dat`);
-    return "No match found in FireTruckStatus.dat";
-}
-
 function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
-    const items = [];
     const allCallsMap = new Map();
     const fireTruckMap = new Map();
 
-    // Parse `allcalls.dat` into a Map
+    // Populate allCallsMap
     allCallsData.split("\n").forEach((line) => {
-        const [code, description] = line.split(",");
-        if (code && description) {
-            allCallsMap.set(code.trim(), description.trim());
+        const [callCode, description] = line.split(",");
+        if (callCode && description) {
+            allCallsMap.set(callCode.trim(), description.trim());
         }
     });
 
-    // Parse `firetruckstatus.dat` into a Map
+    // Populate fireTruckMap
     fireTruckData.split("\n").forEach((line) => {
-        const [code, description] = line.split(",");
-        if (code && description) {
-            fireTruckMap.set(code.trim(), description.trim());
+        const [truckCode, status] = line.split(",");
+        if (truckCode && status) {
+            fireTruckMap.set(truckCode.trim(), status.trim());
         }
     });
 
-    // Parse RSS feed
+    console.log("All Calls Map:", allCallsMap);
+    console.log("Fire Truck Map:", fireTruckMap);
+
+    // Parse the RSS feed
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(rssText, "text/xml");
-    const rawEntries = xmlDoc.documentElement.textContent.trim().split("\n");
+    const entries = xmlDoc.querySelectorAll("channel > entry");
 
-    rawEntries.forEach((entry) => {
-        const [code, timestamp] = entry.split(",");
-        if (code && timestamp) {
-            const callDesc = allCallsMap.get(code.trim()) || "Unknown Call";
-            const truckStatus = fireTruckMap.get(code.trim()) || "Unknown Status";
+    const results = [];
+    entries.forEach((entry) => {
+        const rawText = entry.textContent.trim();
+        const callInfo = Array.from(allCallsMap.entries()).find(([key]) => rawText.includes(key));
+        const truckInfo = Array.from(fireTruckMap.entries()).find(([key]) => rawText.includes(key));
 
-            items.push({
-                code: code.trim(),
-                timestamp: timestamp.trim(),
-                callDescription: callDesc,
-                truckStatus: truckStatus
+        if (callInfo || truckInfo) {
+            results.push({
+                raw: rawText,
+                call: callInfo ? callInfo[1] : "Unknown",
+                truck: truckInfo ? truckInfo[1] : "Unknown"
             });
         }
     });
 
-    return items;
+    console.log("Decoded Results:", results);
+    return results;
 }
 
-function displayData(decodedData) {
-    const output = document.getElementById("output");
-    output.innerHTML = ""; // Clear existing content
+function displayData(data) {
+    const outputDiv = document.getElementById("output");
+    outputDiv.innerHTML = "";
 
-    decodedData.forEach((item) => {
-        const div = document.createElement("div");
-        div.innerHTML = `
-            <strong>Code:</strong> ${item.code}<br>
-            <strong>Timestamp:</strong> ${item.timestamp}<br>
-            <strong>Call Description:</strong> ${item.callDescription}<br>
-            <strong>Truck Status:</strong> ${item.truckStatus}<br>
-            <hr>
-        `;
-        output.appendChild(div);
+    if (data.length === 0) {
+        outputDiv.textContent = "No matching data found.";
+        return;
+    }
+
+    data.forEach((item) => {
+        const entryDiv = document.createElement("div");
+        entryDiv.textContent = `Raw: ${item.raw}, Call Info: ${item.call}, Truck Info: ${item.truck}`;
+        outputDiv.appendChild(entryDiv);
     });
 }
 
-setInterval(processRSSFeed, 5000); // Refresh every 5 seconds
-processRSSFeed(); // Initial load
+// Periodically fetch updates
+setInterval(processRSSFeed, 5000);
+processRSSFeed();

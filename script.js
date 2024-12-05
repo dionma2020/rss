@@ -1,10 +1,9 @@
-const rssFeedUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/feed.xml";
-const allCallsFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/allcalls.dat";
-const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/FireTruckStatus.dat";
+const rssFeedUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/feed.xml";
+const allCallsFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/allcalls.dat";
+const fireTruckFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/FireTruckStatus.dat";
 
 async function processRSSFeed() {
     try {
-        // Fetch all data in parallel
         const [rssResponse, allCallsResponse, fireTruckResponse] = await Promise.all([
             fetch(rssFeedUrl),
             fetch(allCallsFileUrl),
@@ -15,68 +14,54 @@ async function processRSSFeed() {
         const allCallsData = await allCallsResponse.text();
         const fireTruckData = await fireTruckResponse.text();
 
-        // Parse data into usable structures
-        const rssItems = parseRSS(rssText);
-        const allCalls = parseData(allCallsData);
-        const fireTruck = parseData(fireTruckData);
+        const rssEntries = parseRSS(rssText);
+        const allCalls = parseDataFile(allCallsData);
+        const fireTruck = parseDataFile(fireTruckData);
 
-        // Debugging output
-        console.log("RSS Items:", rssItems);
-        console.log("All Calls Data:", allCalls);
-        console.log("Fire Truck Data:", fireTruck);
-
-        const decodedData = decodeRSSFeed(rssItems, allCalls, fireTruck);
-
-        // Debugging output
-        console.log("Decoded Data:", decodedData);
+        const decodedData = decodeEntries(rssEntries, allCalls, fireTruck);
 
         displayData(decodedData);
     } catch (error) {
         console.error("Error processing RSS feed:", error);
+        document.getElementById("output").textContent = "Error loading data.";
     }
 }
 
 function parseRSS(rssText) {
-    // Extract RSS data lines (strip XML tags for simplicity)
-    const lines = rssText.split("\n").filter(line => line.trim().match(/^[A-Za-z0-9,]+$/));
-    return lines.map(line => line.split(",")[0].trim());
-}
-
-function parseData(dataText) {
-    // Parse CSV-like data into an array of [key, value] pairs
-    return dataText.split("\n").map(line => line.split(",").map(item => item.trim())).filter(line => line.length === 2);
-}
-
-function decodeRSSFeed(rssItems, allCalls, fireTruck) {
-    const results = [];
-
-    rssItems.forEach(rssItem => {
-        const callMatch = allCalls.find(([callId]) => rssItem === callId);
-        const truckMatch = fireTruck.find(([truckId]) => rssItem === truckId);
-
-        if (callMatch || truckMatch) {
-            results.push({
-                selcall: rssItem,
-                alias: callMatch ? callMatch[1] : "Unknown",
-                status: truckMatch ? truckMatch[1] : "No Status",
-            });
-        }
+    const lines = rssText.split("\n").filter(line => line.includes(","));
+    return lines.map(line => {
+        const [code, timestamp] = line.split(",");
+        return { code: code.trim(), timestamp: timestamp.trim() };
     });
+}
 
-    return results;
+function parseDataFile(dataText) {
+    const lines = dataText.split("\n").filter(line => line.includes(","));
+    const map = new Map();
+    lines.forEach(line => {
+        const [code, description] = line.split(",");
+        map.set(code.trim(), description.trim());
+    });
+    return map;
+}
+
+function decodeEntries(rssEntries, allCalls, fireTruck) {
+    return rssEntries.map(entry => {
+        const callDesc = allCalls.get(entry.code) || "Unknown Call";
+        const truckDesc = fireTruck.get(entry.code) || "Unknown Status";
+        return { ...entry, callDesc, truckDesc };
+    });
 }
 
 function displayData(decodedData) {
     const outputContainer = document.getElementById("output");
-    outputContainer.innerHTML = ""; // Clear existing data
-
-    decodedData.forEach(item => {
-        const div = document.createElement("div");
-        div.textContent = `Selcall: ${item.selcall}, Alias: ${item.alias}, Status: ${item.status}`;
-        outputContainer.appendChild(div);
-    });
+    outputContainer.innerHTML = decodedData
+        .map(entry =>
+            `<p><strong>${entry.code}</strong>: ${entry.callDesc} - ${entry.truckDesc} (Last seen: ${entry.timestamp})</p>`
+        )
+        .join("");
 }
 
-// Periodically fetch updates
-setInterval(processRSSFeed, 5000);
-processRSSFeed(); // Initial fetch
+// Start processing
+processRSSFeed();
+setInterval(processRSSFeed, 10000);

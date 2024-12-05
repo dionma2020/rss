@@ -1,97 +1,80 @@
-const rssFeedUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/feed.xml";
-const allCallsFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/allcalls.dat";
-const fireTruckFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/FireTruckStatus.dat";
+const rssFeedUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/feed.xml";
+const allCallsFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/allcalls.dat";
+const fireTruckFileUrl = "https://raw.githubusercontent.com/DIONMA2020/RSS/main/FireTruckStatus.dat";
 
-// Fetch file data
-async function fetchData(url) {
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`Error fetching ${url}: ${response.statusText}`);
-    }
-    return response.text();
-}
+let lastUpdated = null; // Track the last update time
 
-// Parse RSS feed
-function parseRSSFeed(feedText) {
-    const entries = [];
-    const lines = feedText.split("\n").filter(line => line.includes(","));
-    for (const line of lines) {
-        const [code, timestamp] = line.split(",");
-        entries.push({ code: code.trim(), timestamp: timestamp.trim() });
-    }
-    return entries;
-}
-
-// Parse data file
-function parseDataFile(fileText) {
-    const map = new Map();
-    const lines = fileText.split("\n").filter(line => line.includes(","));
-    for (const line of lines) {
-        const [key, value] = line.split(",");
-        map.set(key.trim(), value.trim());
-    }
-    return map;
-}
-
-// Decode RSS entries
-function decodeEntries(rssEntries, allCallsMap, fireTruckMap) {
-    return rssEntries
-        .map(entry => {
-            let callDesc = null;
-            let truckDesc = null;
-
-            // Iterate over possible prefix-suffix splits
-            for (let i = 1; i < entry.code.length; i++) {
-                const prefix = entry.code.slice(0, i);
-                const suffix = entry.code.slice(i);
-
-                if (allCallsMap.has(prefix)) callDesc = allCallsMap.get(prefix);
-                if (fireTruckMap.has(suffix)) truckDesc = fireTruckMap.get(suffix);
-            }
-
-            // Return entry only if both matches are found
-            if (callDesc && truckDesc) {
-                return { ...entry, callDesc, truckDesc };
-            }
-            return null;
-        })
-        .filter(entry => entry !== null); // Remove null entries
-}
-
-// Display decoded entries
-function displayDecodedEntries(decodedEntries) {
-    const output = document.getElementById("output");
-    output.innerHTML = ""; // Clear previous content
-
-    for (const entry of decodedEntries) {
-        const p = document.createElement("p");
-        p.textContent = `${entry.callDesc} - ${entry.truckDesc} (Last seen: ${entry.timestamp})`;
-        output.appendChild(p);
-    }
-}
-
-// Main function
 async function processRSSFeed() {
     try {
-        const [rssText, allCallsText, fireTruckText] = await Promise.all([
-            fetchData(rssFeedUrl),
-            fetchData(allCallsFileUrl),
-            fetchData(fireTruckFileUrl),
+        const [rssResponse, allCallsResponse, fireTruckResponse] = await Promise.all([
+            fetch(rssFeedUrl),
+            fetch(allCallsFileUrl),
+            fetch(fireTruckFileUrl)
         ]);
 
-        const rssEntries = parseRSSFeed(rssText);
-        const allCallsMap = parseDataFile(allCallsText);
-        const fireTruckMap = parseDataFile(fireTruckText);
+        const rssText = await rssResponse.text();
+        const allCallsData = await allCallsResponse.text();
+        const fireTruckData = await fireTruckResponse.text();
 
-        const decodedEntries = decodeEntries(rssEntries, allCallsMap, fireTruckMap);
-        displayDecodedEntries(decodedEntries);
+        const decodedData = decodeRSSFeed(rssText, allCallsData, fireTruckData);
+        displayData(decodedData);
     } catch (error) {
-        console.error("Error:", error);
-        const output = document.getElementById("output");
-        output.innerHTML = `<p>Error: ${error.message}</p>`;
+        console.error("Error processing RSS feed:", error.message);
     }
 }
 
-// Refresh data every 5 seconds
-setInterval(processRSSFeed, 5000);
-processRSSFeed();
+function decodeRSSFeed(rssText, allCallsData, fireTruckData) {
+    const items = [];
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(rssText, "text/xml");
+
+    const allCallsLines = allCallsData.split("\n");
+    const fireTruckLines = fireTruckData.split("\n");
+
+    const entries = xmlDoc.querySelectorAll("entry");
+    entries.forEach((entry) => {
+        const title = entry.querySelector("title")?.textContent || "Unknown";
+        const timestamp = entry.querySelector("updated")?.textContent || "Unknown";
+
+        const truckCode = title.substring(0, 6);
+        const statusCode = title.substring(6);
+
+        const truckMatch = allCallsLines.find(line => line.startsWith(truckCode));
+        const statusMatch = fireTruckLines.find(line => line.startsWith(statusCode));
+
+        if (truckMatch && statusMatch) {
+            const truckName = truckMatch.split(",")[1];
+            const status = statusMatch.split(",")[1];
+
+            items.push({ truck: truckName, status, timestamp });
+        }
+    });
+
+    return items;
+}
+
+function displayData(decodedData) {
+    const container = document.getElementById("outputContainer");
+    container.innerHTML = ''; // Clear previous output
+
+    decodedData.forEach(decodedLine => {
+        const element = document.createElement('div');
+        element.textContent = `${decodedLine.truck} - ${decodedLine.status} - ${decodedLine.timestamp}`;
+
+        // Set background color based on status
+        if (decodedLine.status === 'Priority') {
+            element.style.backgroundColor = 'red';
+        } else if (decodedLine.status === 'Routine') {
+            element.style.backgroundColor = 'green';
+        } else {
+            element.style.backgroundColor = 'yellow';
+        }
+
+        container.appendChild(element);
+    });
+}
+
+// Periodically fetch updates
+setInterval(processRSSFeed, 2000); // Check for updates every 5 seconds
+processRSSFeed(); // Initial fetch

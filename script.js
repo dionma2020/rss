@@ -65,7 +65,7 @@ function displayDecodedEntries(decodedEntries) {
 
     for (const entry of decodedEntries) {
         const p = document.createElement("p");
-        p.textContent = `${entry.callDesc} - ${entry.truckDesc} (Last seen: ${entry.timestamp})`;
+        p.textContent = `${entry.callDesc} - ${entry.truckDesc} ( ${entry.timestamp})`;
         output.appendChild(p);
     }
 }

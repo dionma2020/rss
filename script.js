@@ -35,23 +35,27 @@ function parseDataFile(fileText) {
 
 // Decode RSS entries
 function decodeEntries(rssEntries, allCallsMap, fireTruckMap) {
-    return rssEntries.map(entry => {
-        let callDesc = "Unknown Call";
-        let truckDesc = "Unknown Status";
+    return rssEntries
+        .map(entry => {
+            let callDesc = null;
+            let truckDesc = null;
 
-        // Iterate over possible prefix-suffix splits
-        for (let i = 1; i < entry.code.length; i++) {
-            const prefix = entry.code.slice(0, i);
-            const suffix = entry.code.slice(i);
+            // Iterate over possible prefix-suffix splits
+            for (let i = 1; i < entry.code.length; i++) {
+                const prefix = entry.code.slice(0, i);
+                const suffix = entry.code.slice(i);
 
-            if (allCallsMap.has(prefix)) callDesc = allCallsMap.get(prefix);
-            if (fireTruckMap.has(suffix)) truckDesc = fireTruckMap.get(suffix);
-        }
+                if (allCallsMap.has(prefix)) callDesc = allCallsMap.get(prefix);
+                if (fireTruckMap.has(suffix)) truckDesc = fireTruckMap.get(suffix);
+            }
 
-        // Debugging output to console
-        console.log(`Code: ${entry.code}, Prefix Match: ${callDesc}, Suffix Match: ${truckDesc}`);
-        return { ...entry, callDesc, truckDesc };
-    });
+            // Return entry only if both matches are found
+            if (callDesc && truckDesc) {
+                return { ...entry, callDesc, truckDesc };
+            }
+            return null;
+        })
+        .filter(entry => entry !== null); // Remove null entries
 }
 
 // Display decoded entries
@@ -61,7 +65,7 @@ function displayDecodedEntries(decodedEntries) {
 
     for (const entry of decodedEntries) {
         const p = document.createElement("p");
-        p.textContent = `${entry.code}: ${entry.callDesc} - ${entry.truckDesc} (Last seen: ${entry.timestamp})`;
+        p.textContent = `${entry.callDesc} - ${entry.truckDesc} (Last seen: ${entry.timestamp})`;
         output.appendChild(p);
     }
 }

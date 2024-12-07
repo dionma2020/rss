@@ -93,5 +93,5 @@ async function processRSSFeed() {
 }
 
 // Refresh data every 5 seconds
-setInterval(processRSSFeed, 5000);
+setInterval(processRSSFeed, 1000);
 processRSSFeed();

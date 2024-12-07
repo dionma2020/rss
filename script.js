@@ -2,9 +2,10 @@ const rssFeedUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/feed.x
 const allCallsFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/allcalls.dat";
 const fireTruckFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/FireTruckStatus.dat";
 
-// Fetch file data
+// Fetch file data with cache busting
 async function fetchData(url) {
-    const response = await fetch(url);
+    const cacheBuster = `${url}?t=${new Date().getTime()}`; // Prevent caching
+    const response = await fetch(cacheBuster);
     if (!response.ok) {
         throw new Error(`Error fetching ${url}: ${response.statusText}`);
     }
@@ -17,7 +18,9 @@ function parseRSSFeed(feedText) {
     const lines = feedText.split("\n").filter(line => line.includes(","));
     for (const line of lines) {
         const [code, timestamp] = line.split(",");
-        entries.push({ code: code.trim(), timestamp: timestamp.trim() });
+        if (code && timestamp) {
+            entries.push({ code: code.trim(), timestamp: timestamp.trim() });
+        }
     }
     return entries;
 }
@@ -28,7 +31,9 @@ function parseDataFile(fileText) {
     const lines = fileText.split("\n").filter(line => line.includes(","));
     for (const line of lines) {
         const [key, value] = line.split(",");
-        map.set(key.trim(), value.trim());
+        if (key && value) {
+            map.set(key.trim(), value.trim());
+        }
     }
     return map;
 }
@@ -63,9 +68,14 @@ function displayDecodedEntries(decodedEntries) {
     const output = document.getElementById("output");
     output.innerHTML = ""; // Clear previous content
 
+    if (decodedEntries.length === 0) {
+        output.innerHTML = "<p>No decoded entries found.</p>";
+        return;
+    }
+
     for (const entry of decodedEntries) {
         const p = document.createElement("p");
-        p.textContent = `${entry.callDesc} - ${entry.truckDesc} ( ${entry.timestamp})`;
+        p.textContent = `${entry.callDesc} - ${entry.truckDesc} (${entry.timestamp})`;
         output.appendChild(p);
     }
 }
@@ -88,10 +98,10 @@ async function processRSSFeed() {
     } catch (error) {
         console.error("Error:", error);
         const output = document.getElementById("output");
-        output.innerHTML = `<p>Error: ${error.message}</p>`;
+        output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
     }
 }
 
-// Refresh data every 5 seconds
+// Refresh data every second
 setInterval(processRSSFeed, 1000);
 processRSSFeed();

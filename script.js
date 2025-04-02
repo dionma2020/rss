@@ -38,27 +38,33 @@ function parseDataFile(fileText) {
     return map;
 }
 
+// Find best match (exact or approximate)
+function findBestMatch(target, map) {
+    if (map.has(target)) {
+        return map.get(target); // Exact match
+    }
+
+    // Find approximate match
+    const closestMatches = [...map.keys()].filter(key => key.startsWith(target));
+    if (closestMatches.length > 0) {
+        const bestMatch = closestMatches[0];
+        return map.get(bestMatch) + '*'; // Return match with '*' for approximation
+    }
+
+    return ""; // No match found
+}
+
 // Decode RSS entries
 function decodeEntries(rssEntries, allCallsMap, fireTruckMap) {
     return rssEntries
         .map(entry => {
-            let callDesc = null;
-            let truckDesc = null;
+            let callDesc = findBestMatch(entry.code, allCallsMap);
+            let truckDesc = findBestMatch(entry.code, fireTruckMap);
 
-            // Iterate over possible prefix-suffix splits
-            for (let i = 1; i < entry.code.length; i++) {
-                const prefix = entry.code.slice(0, i);
-                const suffix = entry.code.slice(i);
-
-                if (allCallsMap.has(prefix)) callDesc = allCallsMap.get(prefix);
-                if (fireTruckMap.has(suffix)) truckDesc = fireTruckMap.get(suffix);
-            }
-
-            // Return entry only if both matches are found
             if (callDesc && truckDesc) {
                 return { ...entry, callDesc, truckDesc };
             }
-            return null;
+            return null; // If no match found
         })
         .filter(entry => entry !== null); // Remove null entries
 }

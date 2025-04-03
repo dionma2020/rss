@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Truck Status</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Fire Truck Status</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Truck ID</th>
+                <th>Location</th>
+                <th>Last Update</th>
+            </tr>
+        </thead>
+        <tbody id="truck-status">
+            <!-- Data will be inserted here -->
+        </tbody>
+    </table>
+
+    <script>
+        const rssFeedUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/feed.xml";
+        const allCallsFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/allcalls.dat";
+        const fireTruckFileUrl = "https://raw.githubusercontent.com/dionma2020/rss/main/FireTruckStatus.dat";
+
+        async function fetchData(url) {
+            const cacheBuster = `${url}?t=${new Date().getTime()}`;
+            const response = await fetch(cacheBuster);
+            if (!response.ok) {
+                throw new Error(`Error fetching ${url}: ${response.statusText}`);
+            }
+            return response.text();
+        }
+
+        function parseRSSFeed(feedText) {
+            const entries = [];
+            const lines = feedText.split("\n").filter(line => line.includes(","));
+            for (const line of lines) {
+                const [code, timestamp] = line.split(",");
+                if (code && timestamp) {
+                    entries.push({ code: code.trim(), timestamp: timestamp.trim() });
+                }
+            }
+            return entries;
+        }
+
+        function parseDataFile(fileText) {
+            const map = new Map();
+            const lines = fileText.split("\n").filter(line => line.includes(","));
+            for (const line of lines) {
+                const [key, value] = line.split(",");
+                if (key && value) {
+                    map.set(key.trim(), value.trim());
+                }
+            }
+            return map;
+        }
+
+        function decodeEntries(rssEntries, allCallsMap, fireTruckMap) {
+            return rssEntries
+                .map(entry => {
+                    let callDesc = null;
+                    let truckDesc = null;
+
+                    for (let i = 1; i < entry.code.length; i++) {
+                        const prefix = entry.code.slice(0, i);
+                        const suffix = entry.code.slice(i);
+
+                        if (allCallsMap.has(prefix)) callDesc = allCallsMap.get(prefix);
+                        if (fireTruckMap.has(suffix)) truckDesc = fireTruckMap.get(suffix);
+                    }
+
+                    if (callDesc && truckDesc) {
+                        return { ...entry, callDesc, truckDesc };
+                    }
+                    return null;
+                })
+                .filter(entry => entry !== null);
+        }
+
+        function displayDecodedEntries(decodedEntries) {
+            const tableBody = document.getElementById("truck-status");
+            tableBody.innerHTML = "";
+
+            const latestEntries = new Map();
+
+            decodedEntries.forEach(entry => {
+                if (!latestEntries.has(entry.truckDesc) || new Date(entry.timestamp) > new Date(latestEntries.get(entry.truckDesc).timestamp)) {
+                    latestEntries.set(entry.truckDesc, entry);
+                }
+            });
+
+            latestEntries.forEach(entry => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${entry.truckDesc}</td>
+                    <td>${entry.callDesc}</td>
+                    <td>${entry.timestamp}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        async function processRSSFeed() {
+            try {
+                const [rssText, allCallsText, fireTruckText] = await Promise.all([
+                    fetchData(rssFeedUrl),
+                    fetchData(allCallsFileUrl),
+                    fetchData(fireTruckFileUrl),
+                ]);
+
+                const rssEntries = parseRSSFeed(rssText);
+                const allCallsMap = parseDataFile(allCallsText);
+                const fireTruckMap = parseDataFile(fireTruckText);
+
+                const decodedEntries = decodeEntries(rssEntries, allCallsMap, fireTruckMap);
+                displayDecodedEntries(decodedEntries);
+            } catch (error) {
+                console.error("Error:", error);
+                const output = document.getElementById("output");
+                output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        setInterval(processRSSFeed, 1000);
+        processRSSFeed();
+    </script>
+</body>
+</html>
+

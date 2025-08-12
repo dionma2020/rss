@@ -1,28 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RSS Feed Viewer</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-        #outputContainer {
-            margin-top: 20px;
-        }
-        .outputLine {
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-            color: white;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Live Tone Decoder</title>
+<style>
+    body { font-family: Arial, sans-serif; background: #111; color: #0f0; text-align: center; }
+    h1 { color: #0f0; }
+    #log { white-space: pre; font-family: monospace; margin-top: 20px; }
+</style>
+<script src="https://zello.com/js-sdk/1.0.0/zello.js"></script>
 </head>
 <body>
-    <h1>Live Selcall Updates</h1>
-    <div id="output"></div>
+<h1>Live Tone Decoder</h1>
+<div id="status">Connecting to Zello...</div>
+<div id="log"></div>
 
-    <script src="script.js"></script>
+<script>
+const reffreq = {
+    '1': 1124, '2': 1197, '3': 1275, '4': 1358, '5': 1446,
+    '6': 1540, '7': 1640, '8': 1747, '9': 1860, '0': 1981,
+    'A': 2400, 'B': 930, 'C': 2247, 'D': 991, 'E': 2110, 'F': 1055
+};
+
+let train = [];
+let tonenone = 0;
+let analyser, dataArray;
+
+function checkfreq(freq) {
+    for (let tone in reffreq) {
+        if (freq >= reffreq[tone] - 10 && freq <= reffreq[tone] + 10) {
+            return tone;
+        }
+    }
+    return null;
+}
+
+function cleantrain(train) {
+    let lasttone = null;
+    let newtrain = [];
+    for (let tone of train) {
+        if (tone !== lasttone) newtrain.push(tone);
+        lasttone = tone;
+    }
+    if (newtrain.length >= 6) {
+        logSequence(newtrain);
+    }
+}
+
+function logSequence(seq) {
+    const ts = new Date().toISOString().replace("T", " ").substring(0, 19);
+    document.getElementById("log").innerText += `${ts} ${seq.join("")}\n`;
+}
+
+function processAudio() {
+    let bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+
+    // Find peak frequency
+    let maxIndex = 0;
+    for (let i = 1; i < bufferLength; i++) {
+        if (dataArray[i] > dataArray[maxIndex]) maxIndex = i;
+    }
+    let freq = maxIndex * (audioCtx.sampleRate / 2) / bufferLength;
+
+    let tone = checkfreq(freq);
+    if (tone) {
+        train.push(tone);
+    } else if (train.length && tonenone === 3) {
+        cleantrain(train);
+        train = [];
+        tonenone = 0;
+    } else if (train.length) {
+        tonenone++;
+    }
+
+    requestAnimationFrame(processAudio);
+}
+
+// Zello SDK connection
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let client = new Zello.Client();
+
+client.connect({
+    username: "anonymous", // Or your Zello Work account
+    password: "",
+    channel: "Fire Feed",
+    auth_token: "53AB3CZ6UTSDR9SX4FSBXKCVC2BSNJCO",
+    network: "fireandemergencynewzealand1"
+}).then(() => {
+    document.getElementById("status").innerText = "Connected to Zello";
+    client.on('stream', stream => {
+        let source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        processAudio();
+    });
+}).catch(err => {
+    document.getElementById("status").innerText = "Error: " + err;
+});
+</script>
 </body>
 </html>

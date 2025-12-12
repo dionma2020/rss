@@ -1,1 +1,296 @@
+#!/usr/bin/env bash
+# setup_and_build_all.sh
+# Comprehensive Ubuntu bootstrap + build script for MentraOS repository.
+# Usage: from your machine (outside the repo): 
+#   git clone https://github.com/Mentra-Community/MentraOS.git
+#   cd MentraOS
+#   chmod +x ../setup_and_build_all.sh
+#   ../setup_and_build_all.sh
+#
+# WARNING: This script attempts many automated installs. Review before running.
+set -euo pipefail
+REPO_ROOT="$(pwd)"
+ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
+CMDLINE_TOOLS_DIR="$ANDROID_SDK_ROOT/cmdline-tools/latest"
+GRADLEW="$REPO_ROOT/gradlew"
 
+# === helper funcs ===
+echoinfo(){ printf "\n\n=== %s ===\n\n" "$1"; }
+echowarn(){ printf "\n\n*** WARNING: %s ***\n\n" "$1"; }
+confirm(){
+  read -r -p "$1 [y/N] " resp
+  case "$resp" in [yY][eE][sS]|[yY]) return 0;; *) return 1;; esac
+}
+
+# === 1) Basic apt packages and Java 17 ===
+echoinfo "Installing apt packages (sudo required)"
+sudo apt-get update
+sudo apt-get install -y git curl wget unzip build-essential ca-certificates \
+    openjdk-17-jdk protobuf-compiler cmake ninja-build pkg-config python3 python3-pip jq
+
+# ensure JAVA_HOME
+if [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+  export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+elif [ -d "/usr/lib/jvm/java-17-openjdk" ]; then
+  export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+fi
+export PATH="$JAVA_HOME/bin:$PATH"
+echoinfo "JAVA_HOME set to $JAVA_HOME"
+
+# === 2) Android SDK command-line tools install (attempt known URLs) ===
+echoinfo "Installing Android SDK command-line tools"
+mkdir -p "$ANDROID_SDK_ROOT"
+mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+
+# Try a list of likely commandlinetools URLs (falls back to user manual step)
+CMDLINE_URLS=(
+  "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
+  "https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip"
+  "https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip"
+  "https://dl.google.com/android/repository/commandlinetools-linux-7302050_latest.zip"
+)
+
+downloaded=0
+for url in "${CMDLINE_URLS[@]}"; do
+  echoinfo "Attempting to download commandlinetools from $url"
+  tmp="/tmp/cmdline-tools.zip"
+  if curl -fsSL "$url" -o "$tmp"; then
+    mkdir -p "$CMDLINE_TOOLS_DIR"
+    unzip -o "$tmp" -d "$ANDROID_SDK_ROOT/cmdline-tools" >/dev/null
+    # Some zips extract to cmdline-tools, others to tools/...
+    if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
+      mv -f "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools"/* "$CMDLINE_TOOLS_DIR/" || true
+    fi
+    downloaded=1
+    break
+  else
+    echowarn "Download failed for $url"
+  fi
+done
+
+if [ "$downloaded" -ne 1 ]; then
+  echowarn "Could not download Android command-line tools automatically. Please download and place them at: $CMDLINE_TOOLS_DIR"
+  echowarn "Download from: https://developer.android.com/studio#command-tools"
+  exit 1
+fi
+
+export PATH="$CMDLINE_TOOLS_DIR/bin:$PATH"
+mkdir -p "$ANDROID_SDK_ROOT/licenses"
+# Accept licenses non-interactively if sdkmanager exists
+if command -v sdkmanager >/dev/null 2>&1; then
+  yes | sdkmanager --licenses >/dev/null || true
+else
+  echowarn "sdkmanager not found in PATH after installing command-line tools."
+  exit 1
+fi
+
+# === 3) Install Android SDK components used by repo ===
+echoinfo "Installing Android SDK components (platforms, build-tools, ndk, cmake)"
+# Install multiple platforms/build-tools. Adjust/extend as necessary.
+sdkmanager "platform-tools" > /dev/null
+sdkmanager "platforms;android-33" "platforms;android-34" "platforms;android-35" "platforms;android-36" > /dev/null || true
+sdkmanager "build-tools;34.0.0" "build-tools;33.0.2" > /dev/null || true
+sdkmanager "cmake;3.22.1" > /dev/null || true
+# Install a modern NDK (used by externalNativeBuild)
+sdkmanager "ndk;25.2.9519653" > /dev/null || true
+
+echoinfo "Android SDK components installed. ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+# === 4) Node 18 + pnpm + Bun (optional for mobile/web) ===
+echoinfo "Installing Node 18 and pnpm"
+# Node source
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+npm install -g pnpm@8
+
+# Bun (optional, used in CI)
+if confirm "Install Bun (recommended for some cloud builds)?"; then
+  curl -fsSL https://bun.sh/install | bash
+  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+# === 5) Go 1.24 for building cloud livekit bridge ===
+echoinfo "Installing Go 1.24"
+if ! command -v go >/dev/null 2>&1 || [[ "$(go version | cut -d' ' -f3)" != "go1.24"* ]]; then
+  GO_VER="1.24.0"
+  tmp="/tmp/go${GO_VER}.linux-amd64.tar.gz"
+  curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -o "$tmp"
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "$tmp"
+  export PATH="/usr/local/go/bin:$PATH"
+fi
+
+# === 6) Docker for building images ===
+if confirm "Install Docker (required to build Docker images)?"; then
+  echoinfo "Installing Docker"
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sudo sh /tmp/get-docker.sh
+  sudo usermod -aG docker "$USER"
+  echoinfo "Docker installed. You may need to log out and back in for group changes to apply."
+fi
+
+# === 7) Ensure protoc present ===
+if ! command -v protoc >/dev/null 2>&1 ; then
+  echowarn "protoc not found. Trying apt-get install protobuf-compiler (already attempted). If missing, install from https://github.com/protocolbuffers/protobuf/releases"
+  exit 1
+fi
+
+# === 8) Create project debug keystores if missing (helps building debug & local release) ===
+echoinfo "Creating missing debug keystores for modules (if any)"
+mkdir -p "$REPO_ROOT/asg_client/credentials"
+if [ ! -f "$REPO_ROOT/asg_client/credentials/debug.keystore" ]; then
+  keytool -genkeypair -v -keystore "$REPO_ROOT/asg_client/credentials/debug.keystore" \
+    -alias androiddebugkey -keyalg RSA -keysize 2048 -storepass android -keypass android \
+    -dname "CN=Android Debug,O=Android,C=US"
+  echoinfo "Created debug keystore at asg_client/credentials/debug.keystore (password 'android')"
+fi
+
+# Create placeholder local release keystore for ASG and OTA if missing (local-only)
+if [ ! -f "$REPO_ROOT/asg_client/credentials/asg-keystore.jks" ]; then
+  keytool -genkeypair -v -keystore "$REPO_ROOT/asg_client/credentials/asg-keystore.jks" \
+    -alias asg -keyalg RSA -keysize 2048 -storepass asgstore -keypass asgkey \
+    -dname "CN=MentraOS Local,O=Mentra,C=US"
+  echoinfo "Created local placeholder asg-keystore.jks (storepass=asgstore, keypass=asgkey, alias=asg). Replace with production keystore for real releases."
+fi
+if [ ! -f "$REPO_ROOT/asg_client/ota_updater/credentials/ota-keystore.jks" ]; then
+  mkdir -p "$REPO_ROOT/asg_client/ota_updater/credentials"
+  keytool -genkeypair -v -keystore "$REPO_ROOT/asg_client/ota_updater/credentials/ota-keystore.jks" \
+    -alias ota -keyalg RSA -keysize 2048 -storepass otastore -keypass otakey \
+    -dname "CN=OTA Local,O=Mentra,C=US"
+  echoinfo "Created local placeholder ota-keystore.jks (storepass=otastore, keypass=otakey, alias=ota). Replace for production."
+fi
+
+# Add example gradle properties locally to ~/.gradle/gradle.properties if not already present
+mkdir -p "$HOME/.gradle"
+GPROPS="$HOME/.gradle/gradle.properties"
+if ! grep -q "ASG_STORE_PASSWORD" "$GPROPS" 2>/dev/null || [ ! -s "$GPROPS" ]; then
+  cat >> "$GPROPS" <<EOF
+# Local placeholder signing (change before production)
+ASG_STORE_PASSWORD=asgstore
+ASG_KEY_PASSWORD=asgkey
+ASG_KEY_ALIAS=asg
+
+OTA_STORE_PASSWORD=otastore
+OTA_KEY_PASSWORD=otakey
+OTA_KEY_ALIAS=ota
+EOF
+  echoinfo "Wrote example signing properties to $GPROPS (local placeholders). Update with real keystores/passwords for production releases."
+fi
+
+# === 9) Regenerate protobufs if script exists ===
+if [ -x "$REPO_ROOT/mcu_client/regenerate_protobuf.sh" ]; then
+  echoinfo "Regenerating protobuf bindings (mcu_client/regenerate_protobuf.sh)"
+  (cd "$REPO_ROOT/mcu_client" && ./regenerate_protobuf.sh) || echowarn "protoc regeneration may have warnings"
+fi
+
+# === 10) Make sure Gradle wrapper is executable ===
+if [ ! -f "$GRADLEW" ]; then
+  echowarn "Gradle wrapper not found at $GRADLEW. Ensure you're in repo root and wrapper exists."
+  exit 1
+fi
+chmod +x "$GRADLEW"
+
+# === 11) Build Android APKs (Debug + Release) ===
+echoinfo "Building all Android APKs (this will take a while) - debug builds first"
+# Use assembleDebug for all modules. The root Gradle project may be sized, so avoid parallelism issues.
+# NOTE: the assembleRelease run uses placeholder keystores created above for local signing.
+./gradlew --no-daemon --console=plain assembleDebug -x lint || true
+echoinfo "Debug builds finished. Artifacts are under */build/outputs/apk/"
+
+if confirm "Attempt assembleRelease as well (will use placeholder signing if you didn't provide real keys)?"; then
+  ./gradlew --no-daemon --console=plain assembleRelease -x lint || true
+  echoinfo "Release builds finished (may be signed with placeholder keystores)."
+fi
+
+# === 12) Build mobile JS / Expo / packages (mobile directory) ===
+if [ -d "$REPO_ROOT/mobile" ]; then
+  echoinfo "Building mobile JS/web packages (mobile directory)"
+  cd "$REPO_ROOT/mobile"
+  if [ -f bun.lock ] && command -v bun >/dev/null 2>&1; then
+    echoinfo "Installing with bun"
+    bun install || true
+    echoinfo "Building mobile (pnpm or bun scripts)"
+    if [ -f package.json ]; then
+      # attempt typical tasks
+      bun run build || true
+    fi
+  else
+    echoinfo "Installing with pnpm"
+    pnpm install --no-frozen-lockfile || true
+    if [ -f package.json ]; then
+      pnpm build || true
+    fi
+  fi
+  cd "$REPO_ROOT"
+else
+  echowarn "mobile/ directory not present"
+fi
+
+# === 13) Build Go services (cloud packages with Go) ===
+if [ -d "$REPO_ROOT/cloud/packages/cloud-livekit-bridge" ]; then
+  echoinfo "Building cloud/packages/cloud-livekit-bridge (Go)"
+  cd "$REPO_ROOT/cloud/packages/cloud-livekit-bridge"
+  # ensure protoc-gen-go plugins for proto generation if needed
+  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+  if [ -x "./proto/generate.sh" ]; then
+    ./proto/generate.sh || true
+  fi
+  go build -v -o livekit-bridge . || true
+  cd "$REPO_ROOT"
+fi
+
+# === 14) Build Docker images where Dockerfiles found (simple scan) ===
+if command -v docker >/dev/null 2>&1; then
+  echoinfo "Building Docker images found in cloud/* and cloud/packages/** (this will take time and requires docker privileges)"
+  # Find Dockerfiles under repo and attempt to build each into a local image
+  mapfile -t DOCKERFILES < <(find "$REPO_ROOT" -type f -name Dockerfile -print)
+  for df in "${DOCKERFILES[@]}"; do
+    dir="$(dirname "$df")"
+    imagename="mentraos/$(basename "$dir" | tr '/ ' '-'):local"
+    echoinfo "Building $imagename from $dir"
+    (cd "$dir" && docker build -t "$imagename" .) || echowarn "Docker build failed for $dir"
+  done
+else
+  echowarn "Docker not found; skipping Docker image builds."
+fi
+
+# === 15) Build other language packages (cloud - bun/node) ===
+if [ -d "$REPO_ROOT/cloud" ]; then
+  echoinfo "Building cloud JS packages (bun / pnpm where present)"
+  if [ -f "$REPO_ROOT/cloud/bun.lock" ] && command -v bun >/dev/null 2>&1; then
+    (cd "$REPO_ROOT/cloud" && bun install && bun run build) || echowarn "Cloud bun build failed"
+  elif [ -f "$REPO_ROOT/cloud/package.json" ]; then
+    (cd "$REPO_ROOT/cloud" && pnpm install && pnpm build) || echowarn "Cloud pnpm build failed"
+  fi
+fi
+
+# === 16) MCU/Embedded build note (Zephyr / NCS) ===
+echoinfo "MCU / nRF builds: manual steps required (Zephyr/Nordic toolchain)"
+echowarn "This script does NOT install Zephyr SDK, nRF Connect SDK, or SEGGER J-Link which are required for building MCU firmware (mcu_client/* / nrf5340)."
+cat <<EOF
+
+To build MCU firmware you must manually install:
+ - Zephyr SDK and toolchain (https://docs.zephyrproject.org/latest/getting_started/index.html)
+ - West (Zephyr meta-tool)
+ - nRF Connect SDK (NCS) and its dependencies (see Nordic docs)
+ - SEGGER J-Link (if flashing)
+After installing, follow README files in mcu_client/ and mcu_client/nrf5340/*
+
+EOF
+
+# === 17) Final summary ===
+echoinfo "Build script finished. Summary of built artifacts (approximate):"
+echo "- Android APKs (debug/release): search under */build/outputs/apk/* in project submodules (asg_client, asg_client/ota_updater, mobile modules)"
+echo "- Go binaries (cloud/packages/cloud-livekit-bridge/livekit-bridge) if built"
+echo "- Docker images built locally for Dockerfiles found (tagged mentraos/*:local)"
+echo "- Mobile web builds in mobile/ and cloud/ (if bun/pnpm build succeeded)"
+echo "- Protobuf regenerated (if mcu_client/regenerate_protobuf.sh existed)"
+echo
+echoinfo "If any build failed, please paste the failing Gradle/Go/Docker output and I'll help debug."
+echoinfo "Notes:"
+echo " - For production release signing: replace placeholder keystores in asg_client/credentials and asg_client/ota_updater/credentials and update ~/.gradle/gradle.properties with real passwords."
+echo " - If Gradle OOMs, increase org.gradle.jvmargs in ~/.gradle/gradle.properties (e.g., -Xmx4g)."
+
+exit 0
